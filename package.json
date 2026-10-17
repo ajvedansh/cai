@@ -1,0 +1,21 @@
+{
+  "name": "cai-monorepo",
+  "version": "1.0.0",
+  "description": "CAI — Channel AI Intelligence monorepo",
+  "private": true,
+  "scripts": {
+    "dev": "docker-compose up --build",
+    "dev:web": "pnpm --filter @cai/web dev",
+    "dev:infra": "docker-compose up mongodb redis -d",
+    "dev:connector": "pnpm --filter channel-connector-service dev",
+    "dev:parser": "cd apps/signal-parser-service && uvicorn app.main:app --reload --port 3003",
+    "dev:trade-call": "pnpm --filter trade-call-service dev",
+    "build": "pnpm --filter './apps/channel-connector-service' build && pnpm --filter './apps/trade-call-service' build",
+    "test": "pnpm --filter './apps/channel-connector-service' test && pnpm --filter './apps/trade-call-service' test",
+    "test:parser": "cd apps/signal-parser-service && pytest -v",
+    "lint": "pnpm -r lint"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

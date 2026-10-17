@@ -1,0 +1,13 @@
+{
+  "name": "@cai/events",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@cai/types": "file:../types",
+    "typescript": "^5.4.5"
+  }
+}

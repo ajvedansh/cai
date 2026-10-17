@@ -1,0 +1,5 @@
+packages:
+  - 'apps/channel-connector-service'
+  - 'apps/trade-call-service'
+  - 'apps/web'
+  - 'libs/*'

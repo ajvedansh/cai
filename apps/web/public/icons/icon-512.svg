@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0d0f14"/>
+  <rect x="64" y="64" width="384" height="384" rx="64" fill="#151820"/>
+  <text x="256" y="180" text-anchor="middle" font-family="Inter,sans-serif" font-weight="700" font-size="72" fill="#818cf8">CAI</text>
+  <line x1="100" y1="256" x2="412" y2="256" stroke="#1e2330" stroke-width="2"/>
+  <polyline points="100,350 165,295 230,320 300,225 412,195" stroke="#22c55e" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="412" cy="195" r="10" fill="#22c55e"/>
+  <text x="256" y="440" text-anchor="middle" font-family="Inter,sans-serif" font-size="36" fill="#64748b">Signal Intelligence</text>
+</svg>
