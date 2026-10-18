@@ -95,6 +95,14 @@ export class TradeCall {
 
   @Prop({ type: Date, default: null })
   closed_at: Date | null;
+
+  // Full structured JSON the LLM extracted — stored verbatim for auditability
+  @Prop({ type: Object, default: null })
+  parsed_data: Record<string, unknown> | null;
+
+  // Snapshot of previous field values pushed on every update
+  @Prop({ type: [Object], default: [] })
+  update_history: Record<string, unknown>[];
 }
 
 export const TradeCallSchema = SchemaFactory.createForClass(TradeCall);

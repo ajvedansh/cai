@@ -84,22 +84,314 @@ BANKNIFTY short 48500
 
 ---
 
-## Test 5 — Reply chain (two-part signal)
+## Test 5 — Reply chain (two-part signal via Telegram reply)
 
-**Step 1 — Send first message on Telegram:**
+An influencer posts the entry first, then **replies to their own message** with SL and targets.
+
+**Step 1 — Post this on Telegram:**
 ```
 INFY BUY 1600
 ```
 
-**Step 2 — Reply to that exact message with:**
+**Step 2 — In Telegram, long-press that message → Reply, then send:**
 ```
 SL 1520 TGT 1680 1760 1840
 ```
 
+**What happens internally:**  
+The channel-connector reads Telegram's `reply_to_message` field and stitches both parts as:
+```
+[QUOTE]: INFY BUY 1600
+[REPLY]: SL 1520 TGT 1680 1760 1840
+```
+This combined text is sent to the signal parser.
+
 **Expected result:**
-- ✅ Both parts joined automatically by the system
-- Appears in **Trade Calls** with full details: Entry `1,600` · SL `1,520` · 3 targets
+- ✅ Appears in **Trade Calls** with full details
+- Instrument: `INFY`, Direction: `BUY`
+- Entry: `1,600` · SL: `1,520` · Targets: `1,680` · `1,760` · `1,840`
 - Status: `ACTIVE`
+
+**Verify via API:**
+```bash
+curl http://localhost:3004/trade-calls \
+  -H "x-api-key: dev-api-key-change-in-prod" | python3 -m json.tool
+```
+
+---
+
+## Test 5A — Sequential messages (no Telegram reply, same sender within 5 min)
+
+An influencer posts two separate messages (does NOT use Telegram reply). The system automatically stitches them because they come from the same sender in the same channel within 5 minutes.
+
+**Step 1 — Post this on Telegram (do NOT reply — just send a new message):**
+```
+NIFTY BUY 24500 SL 24200
+```
+
+**Step 2 — Within 5 minutes, post another new message (not a reply):**
+```
+Target 24700 24900 25100
+```
+
+**What happens internally:**  
+When the second message arrives, the webhook handler calls `findRecentFromSender()`. It finds the first message (within the 5-min window) and stitches them:
+```
+[QUOTE]: NIFTY BUY 24500 SL 24200
+[REPLY]: Target 24700 24900 25100
+```
+
+**Expected result:**
+- ✅ Appears in **Trade Calls** as a single complete signal
+- Instrument: `NIFTY`, Direction: `BUY`
+- Entry: `24,500` · SL: `24,200` · 3 targets
+- Status: `ACTIVE`
+
+**Test via API (simulates two sequential messages):**
+```bash
+# Message 1 — partial signal
+curl -X POST http://localhost:3002/webhooks/test \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: dev-api-key-change-in-prod" \
+  -d '{
+    "raw_text": "NIFTY BUY 24500 SL 24200",
+    "source_channel": "seq-test",
+    "sender_id": "influencer-001"
+  }'
+
+# Wait a few seconds, then send Message 2 — follow-up from same sender
+sleep 5
+
+curl -X POST http://localhost:3002/webhooks/test \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: dev-api-key-change-in-prod" \
+  -d '{
+    "raw_text": "Target 24700 24900 25100",
+    "source_channel": "seq-test",
+    "sender_id": "influencer-001"
+  }'
+```
+
+**Check logs to confirm stitching occurred:**
+```bash
+docker-compose logs channel-connector-service | grep -i "sequential stitch"
+```
+You should see:
+```
+Sequential stitch applied for sender influencer-001 on channel seq-test
+```
+
+**Verify the trade call:**
+```bash
+curl "http://localhost:3004/trade-calls?limit=5" \
+  -H "x-api-key: dev-api-key-change-in-prod" | python3 -m json.tool
+```
+
+---
+
+## Test 5B — SL / TP update on existing trade call (update_history preserved)
+
+An influencer posts a valid signal, then later **comments on their own post** with revised SL or targets. The system must:
+1. Detect this is an update to an existing open trade call (same instrument + channel, within 24h)
+2. Overwrite the SL/targets with the new values
+3. Keep a full history snapshot of the old values in `update_history`
+
+**Step 1 — Post the original signal:**
+```
+RELIANCE BUY 2850 SL 2780 TGT 2950 3050
+```
+
+**Step 2 — After a minute, reply to it (or post a new message) from the same account:**
+```
+RELIANCE revised SL to 2800. New targets 2970 3080 3200
+```
+
+**What happens internally:**
+- First message → new `TradeCall` created (`status: ACTIVE`, `parsed_data` stored)
+- Second message → parser extracts same instrument `RELIANCE` + same channel → `createFromEvent` finds the existing open trade call → **before overwriting**, pushes current values to `update_history` array
+
+**Expected result in Trade Calls:**
+- `initial_sl` → `2,800` (new value)
+- `targets` → `[2,970, 3,080, 3,200]` (new values)
+- `update_history` has **1 entry** containing the old snapshot:
+  - `initial_sl: 2780`
+  - `targets: [2950, 3050]`
+  - `updated_at: <timestamp>`
+
+**Test via API using `quoted_text` field** (simulates a reply with context):
+```bash
+# Step 1 — Original signal
+curl -X POST http://localhost:3002/webhooks/test \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: dev-api-key-change-in-prod" \
+  -d '{
+    "raw_text": "RELIANCE BUY 2850 SL 2780 TGT 2950 3050",
+    "source_channel": "update-test",
+    "sender_id": "influencer-001"
+  }'
+
+# Wait for it to process
+sleep 10
+
+# Step 2 — Update signal (quoted_text simulates the Telegram reply context)
+curl -X POST http://localhost:3002/webhooks/test \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: dev-api-key-change-in-prod" \
+  -d '{
+    "raw_text": "Revised SL to 2800. New targets 2970 3080 3200",
+    "quoted_text": "RELIANCE BUY 2850 SL 2780 TGT 2950 3050",
+    "source_channel": "update-test",
+    "sender_id": "influencer-001"
+  }'
+
+# Wait for the update to process
+sleep 10
+```
+
+**Verify the update_history was saved:**
+```bash
+curl "http://localhost:3004/trade-calls?limit=10" \
+  -H "x-api-key: dev-api-key-change-in-prod" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for tc in data['data']:
+    if tc.get('instrument') == 'RELIANCE' and tc.get('channel_id') == 'update-test':
+        print('=== Current values ===')
+        print('initial_sl:', tc['initial_sl'])
+        print('targets:', tc['targets'])
+        print()
+        print('=== update_history ===')
+        for i, snap in enumerate(tc.get('update_history', [])):
+            print(f'Snapshot {i+1}:')
+            print('  old initial_sl:', snap.get('initial_sl'))
+            print('  old targets:', snap.get('targets'))
+            print('  updated_at:', snap.get('updated_at'))
+"
+```
+
+**Expected output:**
+```
+=== Current values ===
+initial_sl: 2800
+targets: [2970, 3080, 3200]
+
+=== update_history ===
+Snapshot 1:
+  old initial_sl: 2780
+  old targets: [2950, 3050]
+  updated_at: 2026-10-18T08:xx:xx.xxxZ
+```
+
+---
+
+## Test 5C — Multiple SL/TP updates (history accumulates)
+
+Each time the influencer revises the signal, a new snapshot is added to `update_history`. This gives you a complete audit trail.
+
+**Post 3 updates in sequence:**
+```bash
+# Signal 1 — original
+curl -X POST http://localhost:3002/webhooks/test \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: dev-api-key-change-in-prod" \
+  -d '{
+    "raw_text": "HDFC BUY 1700 SL 1650 TGT 1760",
+    "source_channel": "multi-update-test",
+    "sender_id": "influencer-001"
+  }'
+
+sleep 10
+
+# Signal 2 — first revision (use quoted_text to give LLM full context)
+curl -X POST http://localhost:3002/webhooks/test \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: dev-api-key-change-in-prod" \
+  -d '{
+    "raw_text": "SL revised to 1660 TGT 1770 1800",
+    "quoted_text": "HDFC BUY 1700 SL 1650 TGT 1760",
+    "source_channel": "multi-update-test",
+    "sender_id": "influencer-001"
+  }'
+
+sleep 10
+
+# Signal 3 — second revision
+curl -X POST http://localhost:3002/webhooks/test \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: dev-api-key-change-in-prod" \
+  -d '{
+    "raw_text": "Final targets HDFC 1790 1820 1860 SL trail 1675",
+    "quoted_text": "HDFC BUY 1700 SL 1660 TGT 1770 1800",
+    "source_channel": "multi-update-test",
+    "sender_id": "influencer-001"
+  }'
+
+sleep 10
+```
+
+**Verify 2 history snapshots exist:**
+```bash
+curl "http://localhost:3004/trade-calls?limit=10" \
+  -H "x-api-key: dev-api-key-change-in-prod" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for tc in data['data']:
+    if tc.get('instrument') == 'HDFC' and tc.get('channel_id') == 'multi-update-test':
+        hist = tc.get('update_history', [])
+        print(f'update_history has {len(hist)} snapshots')
+        for i, snap in enumerate(hist):
+            print(f'--- Snapshot {i+1} ---')
+            print('  sl:', snap.get('initial_sl'), '→ targets:', snap.get('targets'))
+            print('  at:', snap.get('updated_at'))
+        print()
+        print('Current: sl:', tc['initial_sl'], '→ targets:', tc['targets'])
+"
+```
+
+**Expected output:**
+```
+update_history has 2 snapshots
+--- Snapshot 1 ---
+  sl: 1650 → targets: [1760]
+  at: 2026-10-18T...
+--- Snapshot 2 ---
+  sl: 1660 → targets: [1770, 1800]
+  at: 2026-10-18T...
+
+Current: sl: 1675 → targets: [1790, 1820, 1860]
+```
+
+---
+
+## Test 5D — Duplicate prevention (same message sent twice)
+
+Ensures the dedup layer blocks the exact same message from creating two trade calls.
+
+```bash
+MSG='{"raw_text":"TCS BUY 4100 SL 4000 TGT 4250","source_channel":"dedup-test","sender_id":"influencer-001"}'
+
+# Send once
+curl -X POST http://localhost:3002/webhooks/test \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: dev-api-key-change-in-prod" \
+  -d "$MSG"
+
+# Send again immediately (simulates Telegram retry)
+curl -X POST http://localhost:3002/webhooks/test \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: dev-api-key-change-in-prod" \
+  -d "$MSG"
+```
+
+**Expected result:**
+- First request → `{ "success": true }` → trade call created
+- Second request → `{ "success": true, "message": "Duplicate message skipped" }` (or similar)
+- Only **one** TCS trade call appears on the dashboard — no duplicate
+
+**Check logs:**
+```bash
+docker-compose logs channel-connector-service | grep -i "duplicate"
+```
 
 ---
 
@@ -212,6 +504,61 @@ curl -X POST http://localhost:3002/webhooks/test \
 ```
 
 This bypasses Telegram entirely and pushes straight into the pipeline.
+
+**Optional fields on the test endpoint:**
+
+| Field | Purpose | Example |
+|---|---|---|
+| `raw_text` | The signal message | `"NIFTY BUY 24500 SL 24200 TGT 24700"` |
+| `quoted_text` | Simulates a Telegram reply context (prepended as `[QUOTE]`) | `"NIFTY BUY 24500 SL 24200"` |
+| `source_channel` | Channel ID for dedup and update matching | `"test-channel"` |
+| `sender_id` | Sender ID for sequential stitching | `"influencer-001"` |
+
+---
+
+## What to check in a Trade Call document
+
+After any test, a full trade call document in MongoDB looks like this (key fields):
+
+```json
+{
+  "_id": "6ad47e53...",
+  "instrument": "NIFTY",
+  "direction": "BUY",
+  "entry_price": 24500,
+  "initial_sl": 24200,
+  "current_sl": 24200,
+  "targets": [24700, 24900, 25100],
+  "status": "ACTIVE",
+
+  "parsed_data": {
+    "instrument": "NIFTY",
+    "segment": "F_AND_O",
+    "direction": "BUY",
+    "entry_price": 24500,
+    "stop_loss": 24200,
+    "targets": [24700, 24900, 25100],
+    "target_split": [33, 34, 33],
+    "trailing_sl": false,
+    "confidence": 0.97,
+    "missing_fields": [],
+    "model_version": "ollama/llama3.2",
+    "parsed_at": "2026-10-18T08:07:42Z"
+  },
+
+  "update_history": [
+    {
+      "initial_sl": 24200,
+      "targets": [24700],
+      "confidence": 0.95,
+      "updated_at": "2026-10-18T09:10:00Z"
+    }
+  ]
+}
+```
+
+- **`parsed_data`** — Full raw JSON the LLM extracted. Always present on new signals. `null` on older pre-feature records.
+- **`update_history`** — One entry per update. Empty `[]` on first creation. Grows with each revision by the influencer. Read oldest-first to trace the full revision history.
 
 ---
 

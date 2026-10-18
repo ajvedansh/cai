@@ -61,6 +61,25 @@ export class TradeCallsService {
         `Updating existing trade call ${existing._id} for ${dto.instrument} on channel ${dto.source_channel}`,
       );
 
+      // Snapshot current values before overwriting
+      const snapshot: Record<string, unknown> = {
+        raw_message_id: existing.raw_message_id,
+        entry_price: existing.entry_price,
+        initial_sl: existing.initial_sl,
+        current_sl: existing.current_sl,
+        targets: existing.targets,
+        target_split: existing.target_split,
+        trailing_sl: existing.trailing_sl,
+        risk_pct: existing.risk_pct,
+        confidence: existing.confidence,
+        model_version: existing.model_version,
+        direction: existing.direction,
+        segment: existing.segment,
+        status: existing.status,
+        updated_at: new Date().toISOString(),
+      };
+      existing.update_history = [...(existing.update_history ?? []), snapshot];
+
       existing.raw_message_id = dto.raw_message_id;
       existing.entry_price = dto.entry_price;
       existing.initial_sl = dto.stop_loss;
@@ -74,6 +93,7 @@ export class TradeCallsService {
       existing.model_version = dto.model_version;
       existing.direction = dto.direction;
       existing.segment = dto.segment;
+      existing.parsed_data = dto.parsed_data ?? null;
 
       if (
         existing.status === TradeCallStatus.PENDING &&
@@ -107,6 +127,7 @@ export class TradeCallsService {
       model_version: dto.model_version,
       status: initialStatus,
       activated_at: activatedAt,
+      parsed_data: dto.parsed_data ?? null,
     });
 
     this.logger.log(

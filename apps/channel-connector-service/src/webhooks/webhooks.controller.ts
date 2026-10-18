@@ -75,6 +75,29 @@ export class WebhooksController {
       return { ok: true, message: 'No actionable message in update' };
     }
 
+    // Sequential stitching: if this message has no reply chain but a recent
+    // message from the same sender exists in the same channel (within 5 min),
+    // combine them so the parser sees the full context.
+    let textToPublish = incoming.raw_text;
+    const isAlreadyStitched = incoming.raw_text.startsWith('[QUOTE]:');
+    if (!isAlreadyStitched) {
+      const STITCH_WINDOW_MS = 5 * 60 * 1000;
+      const prior = await this.rawMessagesService.findRecentFromSender(
+        incoming.channel_id,
+        incoming.sender_id,
+        STITCH_WINDOW_MS,
+      );
+      if (prior) {
+        const priorText = prior.raw_text.startsWith('[QUOTE]:')
+          ? prior.raw_text
+          : prior.raw_text;
+        textToPublish = `[QUOTE]: ${priorText}\n[REPLY]: ${incoming.raw_text}`;
+        this.logger.log(
+          `Sequential stitch applied for sender ${incoming.sender_id} on channel ${incoming.channel_id}`,
+        );
+      }
+    }
+
     try {
       const rawMessage = await this.rawMessagesService.createFromWebhook({
         platform: incoming.platform,
@@ -90,7 +113,7 @@ export class WebhooksController {
         incoming.platform,
         incoming.channel_id,
         incoming.sender_id,
-        incoming.raw_text,
+        textToPublish,
         rawMessage.received_at,
       );
     } catch (err: unknown) {

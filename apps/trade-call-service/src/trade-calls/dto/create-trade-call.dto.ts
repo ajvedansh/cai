@@ -83,4 +83,8 @@ export class CreateTradeCallDto {
   @IsString()
   @IsNotEmpty()
   model_version: string;
+
+  @ApiPropertyOptional({ description: 'Full structured JSON the LLM extracted' })
+  @IsOptional()
+  parsed_data?: Record<string, unknown>;
 }

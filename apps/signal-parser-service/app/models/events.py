@@ -44,6 +44,8 @@ class TradeCallCreatedPayload(BaseModel):
     risk_pct: Optional[float]
     confidence: float
     model_version: str
+    # Full structured JSON the LLM extracted — stored verbatim on the TradeCall
+    parsed_data: dict[str, Any] = {}
 
 
 class TradeCallCreatedEvent(BaseEvent):

@@ -150,6 +150,27 @@ export class RawMessagesService {
   }
 
   /**
+   * Find the most recent message from the same sender in the same channel
+   * within the given time window. Used for sequential message stitching.
+   */
+  async findRecentFromSender(
+    channelId: string,
+    senderId: string,
+    withinMs: number,
+  ): Promise<RawMessageDocument | null> {
+    const since = new Date(Date.now() - withinMs);
+    return this.rawMessageModel
+      .findOne({
+        source_channel: channelId,
+        sender_id: senderId,
+        received_at: { $gte: since },
+      })
+      .sort({ received_at: -1 })
+      .lean()
+      .exec() as unknown as RawMessageDocument | null;
+  }
+
+  /**
    * Update the status of a raw message, optionally setting trade_call_id.
    */
   async updateStatus(

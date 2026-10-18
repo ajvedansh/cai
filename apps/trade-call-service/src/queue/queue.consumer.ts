@@ -185,6 +185,7 @@ export class QueueConsumer
         risk_pct: payload.risk_pct,
         confidence: payload.confidence,
         model_version: payload.model_version,
+        parsed_data: payload.parsed_data,
       };
 
       const tradeCall = await this.tradeCallsService.createFromEvent(createDto);

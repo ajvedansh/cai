@@ -53,6 +53,8 @@ export interface TradeCallCreatedEvent extends BaseEvent {
     risk_pct: number | null;
     confidence: number;
     model_version: string;
+    // Full structured JSON the LLM produced — stored verbatim on the TradeCall document
+    parsed_data: Record<string, unknown>;
   };
 }
 
