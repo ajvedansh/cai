@@ -172,7 +172,7 @@ class RedisStreamConsumer:
                     consumername=self._consumer_name,
                     streams={self._stream: ">"},
                     count=10,
-                    block=2000,  # ms
+                    block=10000,  # ms — 10 s block reduces Redis reads 5× vs original 2 s; must stay under socket_timeout (15 s)
                 )
 
                 if not messages:

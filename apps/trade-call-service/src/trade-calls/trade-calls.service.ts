@@ -11,6 +11,7 @@ import { CreateTradeCallDto } from './dto/create-trade-call.dto';
 import { QueryTradeCallsDto } from './dto/query-trade-calls.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { StateMachineService } from './state-machine.service';
+import { EventsService } from '../events/events.service';
 import { TradeCallStatus } from '@cai/types';
 
 @Injectable()
@@ -24,6 +25,7 @@ export class TradeCallsService {
     @InjectModel(TradeCall.name)
     private readonly tradeCallModel: Model<TradeCallDocument>,
     private readonly stateMachine: StateMachineService,
+    private readonly eventsService: EventsService,
   ) {}
 
   setQueuePublisher(publisher: { publishTradeCallActivated(tc: TradeCallDocument): Promise<void> }): void {
@@ -103,7 +105,15 @@ export class TradeCallsService {
         existing.activated_at = new Date();
       }
 
-      return existing.save();
+      const saved = await existing.save();
+      void this.eventsService.publish({
+        type: 'trade_call_updated',
+        id: String(saved._id),
+        instrument: saved.instrument,
+        status: saved.status,
+        ts: Date.now(),
+      });
+      return saved;
     }
 
     const activatedAt =
@@ -133,6 +143,14 @@ export class TradeCallsService {
     this.logger.log(
       `Created trade call ${created._id} (${created.status}) for ${created.instrument}`,
     );
+
+    void this.eventsService.publish({
+      type: 'trade_call_created',
+      id: String(created._id),
+      instrument: created.instrument,
+      status: created.status,
+      ts: Date.now(),
+    });
 
     return created;
   }
@@ -241,6 +259,13 @@ export class TradeCallsService {
     const saved = await doc.save();
 
     await this.publishActivatedEvent(saved);
+    void this.eventsService.publish({
+      type: 'trade_call_activated',
+      id: String(saved._id),
+      instrument: saved.instrument,
+      status: saved.status,
+      ts: Date.now(),
+    });
 
     return saved;
   }

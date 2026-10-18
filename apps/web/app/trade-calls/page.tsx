@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import { fetcher, updateTradeCallStatus } from '@/lib/api'
+import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates'
 import { DirectionBadge, SegmentBadge, StatusBadge } from '@/components/Badge'
 import type { TradeCall } from '@/lib/types'
 import { TradeCallStatus, Segment, ALLOWED_TRANSITIONS } from '@/lib/types'
@@ -13,6 +14,8 @@ const SEGMENTS = ['', ...Object.values(Segment)]
 const STATUSES = ['', ...Object.values(TradeCallStatus)]
 
 export default function TradeCallsPage() {
+  useRealtimeUpdates()
+
   const [statusFilter, setStatusFilter] = useState('')
   const [segmentFilter, setSegmentFilter] = useState('')
   const [instrument, setInstrument] = useState('')
@@ -27,7 +30,7 @@ export default function TradeCallsPage() {
   qs.set('page', String(page))
   qs.set('limit', '20')
 
-  const { data, mutate, isLoading } = useSWR(`/api/trade-calls?${qs}`, fetcher, { refreshInterval: 15000 })
+  const { data, mutate, isLoading } = useSWR(`/api/trade-calls?${qs}`, fetcher, { refreshInterval: 60000 })
   const calls: TradeCall[] = data?.data ?? []
   const meta = data?.meta ?? { total: 0, page: 1, limit: 20 }
 

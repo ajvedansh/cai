@@ -14,7 +14,7 @@ import { TradeCallCreatedEvent, MessageNeedsReviewEvent } from '@cai/events';
 import { TradeCallStatus } from '@cai/types';
 import { REDIS_CLIENT } from './queue.publisher';
 
-const BLOCK_MS = 5000; // block xreadgroup for up to 5 s
+const BLOCK_MS = 10000; // block xreadgroup for up to 10 s — reduces Redis reads 2× without adding latency
 
 @Injectable()
 export class QueueConsumer
@@ -79,11 +79,35 @@ export class QueueConsumer
   }
 
   /**
+   * Drain any PEL messages assigned to this consumer that survived a prior crash.
+   * Reads with id '0' returns all pending (un-ACKed) messages for this consumer.
+   */
+  private async reclaimPending(stream: string, processFn: (id: string, fields: string[]) => Promise<void>): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const results = await (this.redis as any).xreadgroup(
+      'GROUP', this.consumerGroup, this.consumerName,
+      'COUNT', 100, 'STREAMS', stream, '0',
+    );
+    if (!results || results.length === 0) return;
+    for (const [, messages] of results as [string, [string, string[]][]][]) {
+      for (const [msgId, fields] of messages) {
+        this.logger.log(`[Reclaim] Re-processing pending msg ${msgId} from PEL`);
+        await processFn(msgId, fields);
+      }
+    }
+  }
+
+  /**
    * Infinite loop that reads from cai:trade_call.created and creates TradeCall documents.
    */
   private async startTradeCallConsumer(): Promise<void> {
     this.logger.log(
       `[TradeCallConsumer] Listening on stream: ${this.tradeCallStream}`,
+    );
+
+    // Re-process any messages that were delivered but not ACKed before last restart
+    await this.reclaimPending(this.tradeCallStream, (id, fields) =>
+      this.processTradeCallMessage(id, fields),
     );
 
     while (this.running) {
@@ -124,6 +148,10 @@ export class QueueConsumer
   private async startNeedsReviewConsumer(): Promise<void> {
     this.logger.log(
       `[NeedsReviewConsumer] Listening on stream: ${this.needsReviewStream}`,
+    );
+
+    await this.reclaimPending(this.needsReviewStream, (id, fields) =>
+      this.processNeedsReviewMessage(id, fields),
     );
 
     while (this.running) {

@@ -6,11 +6,15 @@ import { DirectionBadge, SegmentBadge, StatusBadge } from '@/components/Badge'
 import type { TradeCall, ReviewItem } from '@/lib/types'
 import { format } from 'date-fns'
 import Link from 'next/link'
+import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates'
 
 export default function Dashboard() {
-  const { data: statsRes } = useSWR('/api/stats', fetcher, { refreshInterval: 10000 })
-  const { data: callsRes } = useSWR('/api/trade-calls?limit=8&page=1', fetcher, { refreshInterval: 15000 })
-  const { data: reviewRes } = useSWR('/api/review?status=PENDING', fetcher, { refreshInterval: 15000 })
+  // SSE push — updates arrive instantly; 60 s polling is just a safety net
+  useRealtimeUpdates()
+
+  const { data: statsRes } = useSWR('/api/stats', fetcher, { refreshInterval: 60000 })
+  const { data: callsRes } = useSWR('/api/trade-calls?limit=8&page=1', fetcher, { refreshInterval: 60000 })
+  const { data: reviewRes } = useSWR('/api/review?status=PENDING', fetcher, { refreshInterval: 60000 })
 
   const stats = statsRes?.data ?? { total: 0, byStatus: {}, bySegment: {} }
   const calls: TradeCall[] = callsRes?.data ?? []

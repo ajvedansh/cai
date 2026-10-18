@@ -6,6 +6,7 @@ import configuration, { AppConfig } from './config/configuration';
 import { TradeCallsModule } from './trade-calls/trade-calls.module';
 import { ReviewQueueModule } from './review-queue/review-queue.module';
 import { QueueModule } from './queue/queue.module';
+import { EventsModule } from './events/events.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { QueueModule } from './queue/queue.module';
     TradeCallsModule,
     ReviewQueueModule,
     QueueModule,
+    EventsModule,
   ],
 })
 export class AppModule {}
