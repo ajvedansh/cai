@@ -1,0 +1,72 @@
+# Standalone compose for cloud-backed local dev.
+# Uses MongoDB Atlas + Upstash Redis + Groq — no local mongodb/redis containers.
+# Run with:  docker-compose -f docker-compose.cloud.yml up --build
+
+networks:
+  cai-network:
+    driver: bridge
+
+services:
+  channel-connector-service:
+    build:
+      context: .
+      dockerfile: apps/channel-connector-service/Dockerfile
+    container_name: cai-channel-connector
+    restart: unless-stopped
+    ports:
+      - '3002:3002'
+    env_file:
+      - ./apps/channel-connector-service/.env.docker
+    environment:
+      NODE_ENV: development
+    networks:
+      - cai-network
+
+  signal-parser-service:
+    build:
+      context: ./apps/signal-parser-service
+      dockerfile: Dockerfile
+    container_name: cai-signal-parser
+    restart: unless-stopped
+    ports:
+      - '3003:3003'
+    env_file:
+      - ./apps/signal-parser-service/.env.docker
+    environment:
+      APP_ENV: development
+    networks:
+      - cai-network
+
+  trade-call-service:
+    build:
+      context: .
+      dockerfile: apps/trade-call-service/Dockerfile
+    container_name: cai-trade-call
+    restart: unless-stopped
+    ports:
+      - '3004:3004'
+    env_file:
+      - ./apps/trade-call-service/.env.docker
+    environment:
+      NODE_ENV: development
+    networks:
+      - cai-network
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: cai-web
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    env_file:
+      - ./apps/web/.env.docker
+    environment:
+      NODE_ENV: production
+    networks:
+      - cai-network
+    depends_on:
+      - channel-connector-service
+      - signal-parser-service
+      - trade-call-service

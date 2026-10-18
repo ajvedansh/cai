@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     # Groq (free cloud LLM): set USE_GROQ=true and GROQ_API_KEY
     use_groq: bool = False
     groq_api_key: str = ""
-    groq_model: str = "llama3-8b-8192"
+    groq_model: str = "openai/gpt-oss-20b"
 
     # Anthropic (Claude): set USE_ANTHROPIC=true and ANTHROPIC_API_KEY
     use_anthropic: bool = False

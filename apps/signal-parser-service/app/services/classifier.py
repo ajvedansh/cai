@@ -12,7 +12,7 @@ Your task: decide if the message is an actionable trade signal.
 
 IMPORTANT: Respond with ONLY a raw JSON object. No markdown. No code fences. No explanation. Start your response with { and end with }.
 
-Format: {"is_trade_signal": true, "confidence": 0.95, "reason": "brief reason"}
+Format: {"is_trade_signal": true, "confidence": 0.95, "reason": "5 words max"}
 
 A message IS a trade signal if it contains ANY of:
 - Instrument name (NIFTY, BANKNIFTY, RELIANCE, any stock/index) + direction (BUY/SELL/LONG/SHORT)
@@ -64,7 +64,7 @@ class RelevanceClassifier:
         raw = await self._provider.complete(
             system=CLASSIFICATION_SYSTEM_PROMPT,
             user=raw_text,
-            max_tokens=128,
+            max_tokens=512,
         )
         if raw is None:
             return False, 0.0
@@ -100,7 +100,7 @@ class RelevanceClassifier:
         raw = await self._provider.complete(
             system=CLASSIFICATION_FALLBACK_PROMPT,
             user=raw_text,
-            max_tokens=10,
+            max_tokens=64,
         )
         if raw is None:
             return False, 0.0

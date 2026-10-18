@@ -1,5 +1,6 @@
 import asyncio
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 from redis.asyncio import Redis
@@ -90,6 +91,22 @@ class RedisStreamConsumer:
 
             if result.is_complete and result.trade_call is not None:
                 tc = result.trade_call
+                # Full parsed snapshot — stored verbatim on the TradeCall document
+                parsed_data: dict = {
+                    "instrument": tc.instrument,
+                    "segment": tc.segment.value,
+                    "direction": tc.direction.value,
+                    "entry_price": tc.entry_price,
+                    "stop_loss": tc.stop_loss,
+                    "targets": tc.targets,
+                    "target_split": tc.target_split,
+                    "trailing_sl": tc.trailing_sl,
+                    "risk_pct": tc.risk_pct,
+                    "confidence": tc.confidence,
+                    "missing_fields": list(tc.missing_fields) if tc.missing_fields else [],
+                    "model_version": self._parser.model_version,
+                    "parsed_at": datetime.now(timezone.utc).isoformat(),
+                }
                 trade_event = TradeCallCreatedEvent(
                     payload=TradeCallCreatedPayload(
                         raw_message_id=payload.raw_message_id,
@@ -105,6 +122,7 @@ class RedisStreamConsumer:
                         risk_pct=tc.risk_pct,
                         confidence=tc.confidence,
                         model_version=self._parser.model_version,
+                        parsed_data=parsed_data,
                     )
                 )
                 await self._publisher.publish_trade_call_created(trade_event)
@@ -192,8 +210,17 @@ async def create_redis_client(redis_url: str) -> Redis:
     """Create and return a connected async Redis client."""
     import redis.asyncio as aioredis
 
-    client: Redis = aioredis.from_url(redis_url, decode_responses=False)
-    # Ping to verify connectivity
-    await client.ping()
+    is_tls = redis_url.startswith("rediss://")
+    client: Redis = aioredis.from_url(
+        redis_url,
+        decode_responses=False,
+        socket_connect_timeout=15,
+        socket_timeout=15,
+        # Upstash TLS certificates are valid but from Docker the chain
+        # may not verify — skip hostname check to avoid startup hang.
+        ssl_cert_reqs="none" if is_tls else None,
+    )
+    # Ping with a hard timeout so startup never hangs forever
+    await asyncio.wait_for(client.ping(), timeout=20)
     logger.info("redis_connected", url=redis_url.split("@")[-1])
     return client
