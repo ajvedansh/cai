@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const SIGNAL_PARSER_URL = process.env.SIGNAL_PARSER_URL!
-const CHANNEL_CONNECTOR_URL = process.env.CHANNEL_CONNECTOR_URL!
-const API_KEY = process.env.API_KEY!
+const SIGNAL_PARSER_URL = process.env.SIGNAL_PARSER_URL ?? ''
+const CHANNEL_CONNECTOR_URL = process.env.CHANNEL_CONNECTOR_URL ?? ''
+const API_KEY = process.env.API_KEY ?? ''
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,15 +18,24 @@ export async function POST(req: NextRequest) {
     })
     const parseData = await previewRes.json()
 
-    // Step 2: If it's a valid signal, push it through the full pipeline so the
-    // trade-call service creates the TradeCall and it appears on the dashboard.
+    // Step 2: Push through the full pipeline so trade-call-service saves to DB.
+    // If CHANNEL_CONNECTOR_URL is missing, surface it in the response instead of
+    // silently swallowing the error.
     if (parseData.success || parseData.needs_review) {
+      if (!CHANNEL_CONNECTOR_URL) {
+        console.error('[parse] CHANNEL_CONNECTOR_URL env var is not set — trade call will NOT be saved to DB')
+        return NextResponse.json({
+          ...parseData,
+          pipeline_warning: 'CHANNEL_CONNECTOR_URL is not configured on this deployment. Signal was parsed but NOT saved to the database.',
+        })
+      }
+
       fetch(`${CHANNEL_CONNECTOR_URL}/webhooks/test`, {
         method: 'POST',
         headers: { 'x-api-key': API_KEY, 'Content-Type': 'application/json' },
         body: JSON.stringify({ raw_text: rawText, source_channel: sourceChannel }),
-      }).catch(() => {
-        // fire-and-forget — don't block the response if connector is slow
+      }).catch((err: unknown) => {
+        console.error('[parse] Failed to push to channel-connector pipeline:', err)
       })
     }
 
