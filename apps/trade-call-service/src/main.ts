@@ -13,8 +13,24 @@ import { QueuePublisher } from './queue/queue.publisher';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
 
+  // ── CORS ───────────────────────────────────────────────────────────────────
+  // Allow the Vercel frontend to make direct SSE connections (bypasses the
+  // Vercel Edge Function proxy which has a hard 30-second timeout on Hobby plan).
+  // CORS_ORIGINS: comma-separated list of allowed origins for the SSE endpoint.
+  // The SSE endpoint is @Public() (read-only), so the browser can connect directly
+  // and bypass Vercel Edge Function's 30-second timeout on the Hobby plan.
+  const allowedOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:3000')
+    .split(',')
+    .map(o => o.trim());
+
+  app.enableCors({
+    origin: allowedOrigins,
+    methods: ['GET', 'OPTIONS'],
+    allowedHeaders: ['Accept', 'Cache-Control', 'x-api-key'],
+  });
+
   // ── Security ───────────────────────────────────────────────────────────────
-  app.use(helmet());
+  app.use(helmet({ crossOriginResourcePolicy: false }));
 
   // ── Global pipes ───────────────────────────────────────────────────────────
   app.useGlobalPipes(
